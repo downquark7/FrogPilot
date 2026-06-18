@@ -18,6 +18,7 @@ class FrogPilotVCruise:
     self.forcing_stop = False
     self.override_force_stop = False
 
+    self.force_stop_timer = 0
     self.override_force_stop_timer = 0
 
   def update(self, long_control_active, now, time_validated, v_cruise, v_ego, sm, frogpilot_toggles):
@@ -45,6 +46,10 @@ class FrogPilotVCruise:
     v_ego_diff = v_ego_cluster - v_ego
 
     # FrogsGoMoo's Curve Speed Controller
+    self.csc.log_data(long_control_active, v_ego, sm)
+    self.csc.update_budget(frogpilot_toggles)
+    self.csc.update_max_limit(v_ego, sm)
+
     if long_control_active and v_ego > CRUISING_SPEED and self.frogpilot_planner.road_curvature_detected and frogpilot_toggles.curve_speed_controller:
       self.csc.update_target(v_ego)
 
@@ -52,8 +57,6 @@ class FrogPilotVCruise:
 
       self.csc_target = self.csc.target
     else:
-      self.csc.log_data(long_control_active, v_ego, sm)
-
       self.csc_controlling_speed = False
       self.csc.target_set = False
 
@@ -88,9 +91,9 @@ class FrogPilotVCruise:
 
       self.tracked_model_length = self.frogpilot_planner.model_length
 
-      targets = [self.csc_target, v_cruise]
-      if frogpilot_toggles.speed_limit_controller:
-        targets.append(max(self.slc.overridden_speed, self.slc_target + self.slc_offset) - v_ego_diff)
-      v_cruise = min([target if target >= CRUISING_SPEED else v_cruise for target in targets])
+      targets = [self.csc_target if self.csc_target >= CRUISING_SPEED else v_cruise, v_cruise]
+      if frogpilot_toggles.speed_limit_controller and self.slc_target > 0:
+        targets.append(max(max(self.slc.overridden_speed, self.slc_target + self.slc_offset) - v_ego_diff, 0))
+      v_cruise = min(targets)
 
     return v_cruise

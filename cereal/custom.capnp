@@ -56,9 +56,10 @@ struct FrogPilotCarParams @0xaedffd8f31e7b55d {
   canUsePedal @1 :Bool;
   canUseSDSU @2 :Bool;
   flags @3 :UInt32;
-  isHDA2 @4 :Bool;
-  openpilotLongitudinalControlDisabled @5 :Bool;
-  safetyConfigs @6 :List(SafetyConfig);
+  hasDashboardSpeedLimit @4 :Bool;
+  isHDA2 @5 :Bool;
+  openpilotLongitudinalControlDisabled @6 :Bool;
+  safetyConfigs @7 :List(SafetyConfig);
 
   struct SafetyConfig {
     safetyParam @0 :UInt16;
@@ -159,29 +160,31 @@ struct FrogPilotPlan @0xf98d843bfd7004a3 {
   frogpilotEvents @9 :List(FrogPilotOnroadEvent);
   frogpilotToggles @10 :Text;
   increasedStoppedDistance @11 :Float32;
-  lateralCheck @12 :Bool;
-  laneWidthLeft @13 :Float32;
-  laneWidthRight @14 :Float32;
+  laneWidthLeft @12 :Float32;
+  laneWidthRight @13 :Float32;
+  lateralCheck @14 :Bool;
   maxAcceleration @15 :Float32;
   minAcceleration @16 :Float32;
   redLight @17 :Bool;
   roadCurvature @18 :Float32;
   slcMapSpeedLimit @19 :Float32;
-  slcMapboxSpeedLimit @20 :Float32;
-  slcNextSpeedLimit @21 :Float32;
-  slcOverriddenSpeed @22 :Float32;
-  slcSpeedLimit @23 :Float32;
-  slcSpeedLimitOffset @24 :Float32;
-  slcSpeedLimitSource @25 :Text;
-  speedJerk @26 :Float32;
-  speedLimitChanged @27 :Bool;
-  tFollow @28 :Float32;
-  themeUpdated @29 :Bool;
-  trackingLead @30 :Bool;
-  unconfirmedSlcSpeedLimit @31 :Float32;
-  vCruise @32 :Float32;
-  weatherDaytime @33 :Bool;
-  weatherId @34 :Int16;
+  slcMapboxIsForward @20 :Bool;
+  slcMapboxSpeedLimit @21 :Float32;
+  slcMapboxWayId @22 :Int64;
+  slcNextSpeedLimit @23 :Float32;
+  slcOverriddenSpeed @24 :Float32;
+  slcSpeedLimit @25 :Float32;
+  slcSpeedLimitOffset @26 :Float32;
+  slcSpeedLimitSource @27 :Text;
+  speedJerk @28 :Float32;
+  speedLimitChanged @29 :Bool;
+  tFollow @30 :Float32;
+  themeUpdated @31 :Bool;
+  trackingLead @32 :Bool;
+  unconfirmedSlcSpeedLimit @33 :Float32;
+  vCruise @34 :Float32;
+  weatherDaytime @35 :Bool;
+  weatherId @36 :Int16;
 }
 
 struct FrogPilotRadarState @0xb86e6369214c01c8 {
@@ -350,6 +353,23 @@ enum RoadContext {
   unknown @2;
 }
 
+enum HighwayClass {
+  unknown @0;
+  motorway @1;
+  motorwayLink @2;
+  trunk @3;
+  trunkLink @4;
+  primary @5;
+  primaryLink @6;
+  secondary @7;
+  secondaryLink @8;
+  tertiary @9;
+  tertiaryLink @10;
+  unclassified @11;
+  residential @12;
+  livingStreet @13;
+}
+
 struct MapdOut @0xa4f1eb3323f5f582 {
   wayName @0 :Text;
   wayRef @1 :Text;
@@ -375,4 +395,13 @@ struct MapdOut @0xa4f1eb3323f5f582 {
   mapCurveSpeed @21 :Float32;
   waySelectionType @22 :WaySelectionType;
   speedLimitAccepted @23 :Bool;
+  highwayClass @24 :HighwayClass;
+  wayId @25 :Int64;
+  conditionalSpeedLimit @26 :Text;
+  isForward @27 :Bool;
+  latitude @28 :Float64;
+  longitude @29 :Float64;
+  bearing @30 :Float32;
+  locationMonoTime @31 :UInt64;
+  mapMatchValid @32 :Bool;
 }

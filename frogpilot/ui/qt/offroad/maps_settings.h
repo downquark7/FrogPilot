@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "frogpilot/ui/qt/offroad/frogpilot_settings.h"
 #include "frogpilot/ui/qt/widgets/navigation_functions.h"
 
@@ -23,7 +25,9 @@ private:
 
   bool cancellingDownload;
   bool forceOpenDescriptions;
-  bool hasMapsSelected;
+  bool hasMapsSelected = false;
+
+  int previousDownloadedFiles = 0;
 
   ButtonControl *downloadMapsButton;
   ButtonControl *removeMapsButton;
@@ -39,6 +43,8 @@ private:
   LabelControl *downloadTimeElapsed;
   LabelControl *lastMapsDownload;
   LabelControl *mapsSize;
+
+  std::vector<MapSelectionControl *> mapSelectionControls;
 
   Params params;
   Params params_memory{"", true};
