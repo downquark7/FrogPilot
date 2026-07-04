@@ -106,6 +106,12 @@ class TestSubaruSafetyBase(common.PandaCarSafetyTest):
     values = {"Cruise_Activated": enable}
     return self.packer.make_can_msg_panda("CruiseControl", self.ALT_MAIN_BUS, values)
 
+  # FrogPilot tests
+  def _toggle_aol(self, toggle_on):
+    # CruiseControl, Cruise_On is the main on button
+    values = {"Cruise_On": 1 if toggle_on else 0}
+    return self.packer.make_can_msg_panda("CruiseControl", self.ALT_MAIN_BUS, values)
+
 
 class TestSubaruStockLongitudinalSafetyBase(TestSubaruSafetyBase):
   def _cancel_msg(self, cancel, cruise_throttle=0):
@@ -155,7 +161,7 @@ class TestSubaruLongitudinalSafetyBase(TestSubaruSafetyBase, common.Longitudinal
 class TestSubaruTorqueSafetyBase(TestSubaruSafetyBase, common.DriverTorqueSteeringSafetyTest, common.SteerRequestCutSafetyTest):
   MAX_RATE_UP = 50
   MAX_RATE_DOWN = 70
-  MAX_TORQUE = 2047
+  MAX_TORQUE = 3071
 
   # Safety around steering req bit
   MIN_VALID_STEERING_FRAMES = 7
@@ -176,9 +182,9 @@ class TestSubaruGen2TorqueSafetyBase(TestSubaruTorqueSafetyBase):
   ALT_MAIN_BUS = SUBARU_ALT_BUS
   ALT_CAM_BUS = SUBARU_ALT_BUS
 
-  MAX_RATE_UP = 40
-  MAX_RATE_DOWN = 40
-  MAX_TORQUE = 1000
+  MAX_RATE_UP = 35
+  MAX_RATE_DOWN = 50
+  MAX_TORQUE = 1500
 
 
 class TestSubaruGen2TorqueStockLongitudinalSafety(TestSubaruStockLongitudinalSafetyBase, TestSubaruGen2TorqueSafetyBase):
