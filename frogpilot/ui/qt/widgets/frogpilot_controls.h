@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cmath>
+#include <utility>
 
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMetaObject>
 #include <QMovie>
 #include <QRegularExpression>
 #include <QTimer>
@@ -13,16 +15,20 @@
 #include "selfdrive/ui/qt/util.h"
 #include "selfdrive/ui/qt/widgets/controls.h"
 
-bool useKonikServer();
+#include "frogpilot/ui/qt/widgets/frogpilot_helpers.h"
 
-void loadGif(const QString &gifPath, QSharedPointer<QMovie> &movie, const QSize &size, QWidget *parent);
-void loadImage(const QString &basePath, QPixmap &pixmap, QSharedPointer<QMovie> &movie, const QSize &size, QWidget *parent);
-void openDescriptions(bool forceOpenDescriptions, std::map<QString, AbstractControl*> toggles);
-void updateFrogPilotToggles();
+template <typename T>
+void openDescriptions(bool forceOpenDescriptions, const std::map<QString, T> &toggles) {
+  if (!forceOpenDescriptions) {
+    return;
+  }
 
-QColor loadThemeColors(const QString &colorKey, bool clearCache = false);
-
-QString processModelName(const QString &modelName);
+  for (const auto &[key, toggle] : toggles) {
+    if (AbstractControl *control = qobject_cast<AbstractControl*>(toggle)) {
+      control->showDescription();
+    }
+  }
+}
 
 const QString buttonStyle = R"(
   QPushButton {
@@ -49,8 +55,6 @@ class FrogPilotConfirmationDialog : public ConfirmationDialog {
   Q_OBJECT
 
 public:
-  explicit FrogPilotConfirmationDialog(const QString &prompt_text, const QString &confirm_text,
-                                       const QString &cancel_text, const bool rich, QWidget *parent);
   static bool toggleReboot(QWidget *parent);
   static bool yesorno(const QString &prompt_text, QWidget *parent);
 };
@@ -80,7 +84,6 @@ class FrogPilotListWidget : public QWidget {
       }
       delete child;
     }
-    outer_layout.addStretch();
   }
 
 private:
@@ -98,7 +101,7 @@ private:
         }
       }
 
-      if (widget == nullptr || (widget->isVisible() && nextWidget->isVisible())) {
+      if (widget == nullptr || (widget->isVisible() && nextWidget != nullptr && nextWidget->isVisible())) {
         QRect r = inner_layout.itemAt(i)->geometry();
         int bottom = r.bottom() + inner_layout.spacing() / 2;
         p.drawLine(r.left() + 40, bottom, r.right() - 40, bottom);
@@ -109,45 +112,8 @@ private:
   QVBoxLayout inner_layout;
 };
 
-class FrogPilotButtonControl : public ParamControl {
-  Q_OBJECT
+class FrogPilotButtonGroup {
 public:
-  FrogPilotButtonControl(const QString &param, const QString &title, const QString &desc, const QString &icon,
-                         const std::vector<QString> &button_texts, bool checkable = false,
-                         bool exclusive = false, int minimum_button_width = 225) : ParamControl(param, title, desc, icon) {
-    key = param.toStdString();
-
-    button_group = new QButtonGroup(this);
-    button_group->setExclusive(exclusive);
-    for (int i = 0; i < button_texts.size(); i++) {
-      QPushButton *button = new QPushButton(button_texts[i], this);
-      button->setCheckable(checkable);
-      button->setStyleSheet(buttonStyle);
-      button->setMinimumWidth(minimum_button_width);
-      hlayout->addWidget(button);
-      button_group->addButton(button, i);
-    }
-
-    hlayout->addWidget(&toggle);
-
-    QObject::connect(button_group, QOverload<int>::of(&QButtonGroup::buttonClicked), [=](int id) {
-      emit buttonClicked(id);
-    });
-
-    QObject::connect(this, &ToggleControl::toggleFlipped, this, &FrogPilotButtonControl::refresh);
-  }
-
-  virtual void refresh() {
-    bool state = params.getBool(key);
-    if (state != toggle.on) {
-      toggle.togglePosition();
-    }
-
-    for (QAbstractButton *button : button_group->buttons()) {
-      button->setEnabled(state);
-    }
-  }
-
   void clearCheckedButtons(bool clear_exclusivity = false) {
     if (clear_exclusivity) {
       button_group->setExclusive(false);
@@ -162,85 +128,15 @@ public:
     }
   }
 
-  void setCheckedButton(int id) {
-    if (QAbstractButton *button = button_group->button(id)) {
-      button->setChecked(true);
-    }
-  }
-
-  void setEnabledButton(int id, bool enable) {
-    if (QAbstractButton *button = button_group->button(id)) {
-      button->setEnabled(enable);
-    }
-  }
-
-  void setVisibleButton(int id, bool visible) {
-    if (QAbstractButton *button = button_group->button(id)) {
-      button->setVisible(visible);
-    }
-  }
-
-  void showEvent(QShowEvent *event) override {
-    refresh();
-  }
-
-signals:
-  void buttonClicked(int id);
-
-protected:
-  std::string key;
-
-  Params params;
-
-  QButtonGroup *button_group;
-};
-
-class FrogPilotButtonsControl : public AbstractControl {
-  Q_OBJECT
-public:
-  FrogPilotButtonsControl(const QString &title, const QString &desc, const QString &icon,
-                          const std::vector<QString> &button_texts, const bool &checkable = false, const bool &exclusive = true,
-                          const int minimum_button_width = 225) : AbstractControl(title, desc, icon) {
-    button_group = new QButtonGroup(this);
-    button_group->setExclusive(exclusive);
-    for (int i = 0; i < button_texts.size(); i++) {
-      QPushButton *button = new QPushButton(button_texts[i], this);
-      button->installEventFilter(this);
-      button->setCheckable(checkable);
-      button->setStyleSheet(buttonStyle);
-      button->setMinimumWidth(minimum_button_width);
-      hlayout->addWidget(button);
-      button_group->addButton(button, i);
-    }
-
-    QObject::connect(button_group, QOverload<int>::of(&QButtonGroup::buttonClicked), [=](int id) {
-      emit buttonClicked(id);
-    });
-  }
-
-  void clearCheckedButtons(bool clear_exclusivity = false) {
-    if (clear_exclusivity) {
-      button_group->setExclusive(false);
-    }
-
+  void setButtonsEnabled(bool enable) {
     for (QAbstractButton *button : button_group->buttons()) {
-      button->setChecked(false);
-    }
-
-    if (clear_exclusivity) {
-      button_group->setExclusive(true);
+      button->setEnabled(enable);
     }
   }
 
   void setCheckedButton(int id) {
     if (QAbstractButton *button = button_group->button(id)) {
       button->setChecked(true);
-    }
-  }
-
-  void setEnabled(bool enable) {
-    for (QAbstractButton *button : button_group->buttons()) {
-      button->setEnabled(enable);
     }
   }
 
@@ -262,23 +158,88 @@ public:
     }
   }
 
-signals:
-  void buttonClicked(int id);
-  void disabledButtonClicked(int id);
-
 protected:
-  bool eventFilter(QObject *obj, QEvent *event) override {
-    if (event->type() == QEvent::MouseButtonPress) {
-      QPushButton *button = qobject_cast<QPushButton *>(obj);
-      if (button && !button->isEnabled()) {
-        emit disabledButtonClicked(button_group->id(button));
-      }
+  void buildButtons(QWidget *owner, QBoxLayout *layout, const std::vector<QString> &button_texts,
+                    bool checkable, bool exclusive, int minimum_button_width, const QString &style) {
+    button_group = new QButtonGroup(owner);
+    button_group->setExclusive(exclusive);
+
+    for (int i = 0; i < button_texts.size(); i++) {
+      QPushButton *button = new QPushButton(button_texts[i], owner);
+      button->setCheckable(checkable);
+      button->setStyleSheet(style);
+      button->setMinimumWidth(minimum_button_width);
+      layout->addWidget(button);
+      button_group->addButton(button, i);
     }
-    return AbstractControl::eventFilter(obj, event);
   }
 
-private:
-  QButtonGroup *button_group;
+  QButtonGroup *button_group = nullptr;
+};
+
+class FrogPilotButtonControl : public ParamControl, public FrogPilotButtonGroup {
+  Q_OBJECT
+public:
+  FrogPilotButtonControl(const QString &param, const QString &title, const QString &desc, const QString &icon,
+                         const std::vector<QString> &button_texts, bool checkable = false,
+                         bool exclusive = false, int minimum_button_width = 225) : ParamControl(param, title, desc, icon) {
+    key = param.toStdString();
+
+    buildButtons(this, hlayout, button_texts, checkable, exclusive, minimum_button_width, buttonStyle);
+
+    hlayout->removeWidget(&toggle);
+    hlayout->addWidget(&toggle);
+
+    QObject::connect(button_group, QOverload<int>::of(&QButtonGroup::buttonClicked), [this](int id) {
+      onButtonClicked(id);
+    });
+
+    QObject::connect(this, &ToggleControl::toggleFlipped, this, &FrogPilotButtonControl::refresh);
+  }
+
+  virtual void refresh() {
+    bool state = params.getBool(key);
+    if (state != toggle.on) {
+      toggle.togglePosition();
+    }
+
+    for (QAbstractButton *button : button_group->buttons()) {
+      button->setEnabled(state);
+    }
+  }
+
+  void showEvent(QShowEvent *event) override {
+    refresh();
+  }
+
+signals:
+  void buttonClicked(int id);
+
+protected:
+  virtual void onButtonClicked(int id) {
+    emit buttonClicked(id);
+  }
+
+  std::string key;
+
+  Params params;
+};
+
+class FrogPilotButtonsControl : public AbstractControl, public FrogPilotButtonGroup {
+  Q_OBJECT
+public:
+  FrogPilotButtonsControl(const QString &title, const QString &desc, const QString &icon,
+                          const std::vector<QString> &button_texts, const bool &checkable = false, const bool &exclusive = true,
+                          const int minimum_button_width = 225) : AbstractControl(title, desc, icon) {
+    buildButtons(this, hlayout, button_texts, checkable, exclusive, minimum_button_width, buttonStyle);
+
+    QObject::connect(button_group, QOverload<int>::of(&QButtonGroup::buttonClicked), [this](int id) {
+      emit buttonClicked(id);
+    });
+  }
+
+signals:
+  void buttonClicked(int id);
 };
 
 class FrogPilotButtonToggleControl : public FrogPilotButtonControl {
@@ -293,10 +254,12 @@ public:
       button_group->buttons()[i]->setChecked(params.getBool(button_params[i].toStdString()));
     }
 
-    QObject::connect(button_group, QOverload<int>::of(&QButtonGroup::buttonClicked), [=](int id) {
-      params.putBool(button_params[id].toStdString(), button_group->button(id)->isChecked());
-      emit buttonClicked(id);
-    });
+  }
+
+  void onButtonClicked(int id) override {
+    params.putBool(button_params[id].toStdString(), button_group->button(id)->isChecked());
+
+    emit buttonClicked(id);
   }
 
   void refresh() override {
@@ -320,7 +283,7 @@ public:
 
     manageButton = new ButtonControl("", tr("MANAGE"), "", this);
 
-    hlayout->insertWidget(hlayout->indexOf(&toggle) - 1, manageButton);
+    hlayout->insertWidget(hlayout->indexOf(&toggle), manageButton);
 
     QObject::connect(manageButton, &ButtonControl::clicked, this, &FrogPilotManageControl::manageButtonClicked);
     QObject::connect(this, &ToggleControl::toggleFlipped, this, &FrogPilotManageControl::refresh);
@@ -328,10 +291,6 @@ public:
 
   void refresh() {
     manageButton->setEnabled(params.getBool(key));
-  }
-
-  void setManageVisibility(bool visible) {
-    manageButton->setVisible(visible);
   }
 
   void showEvent(QShowEvent *event) override {
@@ -376,6 +335,9 @@ public:
     QObject::connect(&decrement_button, &QPushButton::pressed, this, &FrogPilotParamValueControl::decrementPressed);
     QObject::connect(&increment_button, &QPushButton::pressed, this, &FrogPilotParamValueControl::incrementPressed);
 
+    decrement_repeating_timer.setSingleShot(true);
+    increment_repeating_timer.setSingleShot(true);
+
     QObject::connect(&decrement_button, &QPushButton::released, [this]() {
       decrement_repeating_timer.start(decrement_button.autoRepeatInterval());
     });
@@ -385,15 +347,18 @@ public:
 
     QObject::connect(&decrement_repeating_timer, &QTimer::timeout, [this]() {
       decrement_repeating = false;
+      previous_value = value;
     });
     QObject::connect(&increment_repeating_timer, &QTimer::timeout, [this]() {
       increment_repeating = false;
+      previous_value = value;
     });
   }
 
   void decrementPressed() {
     if (display_warning && !warning_shown) {
       showWarning();
+      return;
     }
 
     float delta = decrement_repeating && fast_increase ? interval * 5 : interval;
@@ -411,12 +376,17 @@ public:
 
     warning_shown = false;
 
-    updateParam();
+    if (value_dirty) {
+      updateParam();
+
+      value_dirty = false;
+    }
   }
 
   void incrementPressed() {
     if (display_warning && !warning_shown) {
       showWarning();
+      return;
     }
 
     float delta = increment_repeating && fast_increase ? interval * 5 : interval;
@@ -429,12 +399,15 @@ public:
     increment_repeating |= delta == interval * 5;
   }
 
-  void refresh() {
-    value = std::clamp(std::round(params.getFloat(key) * factor) / factor, min_value, max_value);
+  virtual void refresh() {
+    float stored = std::round(params.getFloat(key) * factor) / factor;
+
+    value = std::clamp(stored, min_value, max_value);
     previous_value = value;
 
+    value_dirty |= value != stored;
+
     updateDisplay();
-    updateParam();
   }
 
   void setWarning(const QString &newWarning) {
@@ -460,9 +433,12 @@ public:
   }
 
   void showWarning() {
-    ConfirmationDialog::alert(warning, this);
-
     warning_shown = true;
+
+    decrement_button.setDown(false);
+    increment_button.setDown(false);
+
+    ConfirmationDialog::alert(warning, this);
   }
 
   void updateControl(const float &newMinValue, const float &newMaxValue, const std::map<float, QString> &newValueLabels = {}) {
@@ -492,7 +468,9 @@ public:
   }
 
   void updateValue() {
-    value = std::round(value * factor) / factor;
+    value = std::clamp(std::round(value * factor) / factor, min_value, max_value);
+
+    value_dirty = true;
 
     emit valueChanged(value);
 
@@ -506,18 +484,19 @@ protected:
   QLabel *value_label;
 
 private:
-  bool decrement_repeating;
-  bool display_warning;
+  bool decrement_repeating = false;
+  bool display_warning = false;
   bool fast_increase;
-  bool increment_repeating;
-  bool warning_shown;
+  bool increment_repeating = false;
+  bool value_dirty = false;
+  bool warning_shown = false;
 
   float interval;
   float factor;
   float max_value;
   float min_value;
-  float previous_value;
-  float value;
+  float previous_value = 0.0f;
+  float value = 0.0f;
 
   std::map<float, QString> value_labels;
 
@@ -568,7 +547,7 @@ public:
     });
   }
 
-  void refresh() {
+  void refresh() override {
     if (checkable) {
       for (int i = 0; i < button_group->buttons().size(); i++) {
         QAbstractButton *button = button_group->button(i);
@@ -576,11 +555,6 @@ public:
       }
     }
     FrogPilotParamValueControl::refresh();
-  }
-
-  void showEvent(QShowEvent *event) override {
-    refresh();
-    FrogPilotParamValueControl::showEvent(event);
   }
 
 signals:

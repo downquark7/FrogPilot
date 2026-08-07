@@ -17,6 +17,7 @@ class FrogPilotVCruise:
     self.forcing_stop = False
     self.override_force_stop = False
 
+    self.force_stop_timer = 0
     self.override_force_stop_timer = 0
 
   def update(self, gps_position, now, time_validated, v_cruise, v_ego, sm, frogpilot_toggles):
@@ -44,7 +45,10 @@ class FrogPilotVCruise:
     v_ego_diff = v_ego_cluster - v_ego
 
     # FrogsGoMoo's Curve Speed Controller
-    if v_ego > CRUISING_SPEED and sm["controlsState"].enabled and self.frogpilot_planner.road_curvature_detected and frogpilot_toggles.curve_speed_controller:
+    self.csc.update_budget(frogpilot_toggles)
+    self.csc.update_max_limit(v_ego, sm, frogpilot_toggles)
+
+    if v_ego > CRUISING_SPEED and sm["carControl"].longActive and self.frogpilot_planner.road_curvature_detected and frogpilot_toggles.curve_speed_controller:
       self.csc.update_target(v_ego)
 
       self.csc_controlling_speed = True

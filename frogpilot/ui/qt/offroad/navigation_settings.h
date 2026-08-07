@@ -23,18 +23,21 @@ private:
   void updateState(const UIState &s, const FrogPilotUIState &fs);
   void updateStep();
 
-  bool forceOpenDescriptions;
+  bool forceOpenDescriptions = false;
   bool mapboxPublicKeySet;
   bool mapboxSecretKeySet;
   bool setupCompleted;
 
+  std::map<QString, AbstractControl*> toggles;
+
   ButtonControl *amapKeyControl1;
   ButtonControl *amapKeyControl2;
-  FrogPilotButtonsControl *publicMapboxKeyControl;
-  FrogPilotButtonsControl *secretMapboxKeyControl;
   ButtonControl *setupButton;
 
   FrogPilotButtonControl *updateSpeedLimitsToggle;
+
+  FrogPilotButtonsControl *publicMapboxKeyControl;
+  FrogPilotButtonsControl *secretMapboxKeyControl;
 
   FrogPilotButtonsControl *searchInput;
 

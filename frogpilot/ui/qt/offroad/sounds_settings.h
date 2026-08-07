@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QProcess>
+
 #include "frogpilot/ui/qt/offroad/frogpilot_settings.h"
 
 class FrogPilotSoundsPanel : public FrogPilotListWidget {
@@ -15,11 +17,12 @@ protected:
   void showEvent(QShowEvent *event) override;
 
 private:
+  void playSound(const QString &alert, int volume);
   void updateState(const UIState &s);
   void updateToggles();
 
-  bool forceOpenDescriptions;
-  bool started;
+  bool forceOpenDescriptions = false;
+  bool started = false;
 
   std::map<QString, AbstractControl*> toggles;
 
@@ -34,4 +37,6 @@ private:
 
   Params params;
   Params params_memory{"/dev/shm/params"};
+
+  QProcess *soundPlayerProcess = nullptr;
 };

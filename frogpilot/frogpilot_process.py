@@ -31,7 +31,7 @@ def assets_checks(model_manager, theme_manager, frogpilot_toggles):
 
   report_data = json.loads(params_memory.get("IssueReported", encoding="utf-8") or "{}")
   if report_data:
-    capture_report(report_data["DiscordUser"], report_data["Issue"], vars(frogpilot_toggles))
+    run_thread_with_lock("capture_report", capture_report, (report_data["DiscordUser"], report_data["Issue"], dict(vars(frogpilot_toggles))))
     params_memory.remove("IssueReported")
 
   for asset_type, asset_param in THEME_COMPONENT_PARAMS.items():
@@ -95,6 +95,8 @@ def frogpilot_thread():
       frogpilot_variables.update(theme_manager.holiday_theme, started)
       frogpilot_toggles = get_frogpilot_toggles()
 
+      params.put_float_nonblocking("MaxLateralAcceleration", frogpilot_planner.frogpilot_vcruise.csc.max_limit)
+
       if frogpilot_toggles.lock_doors_timer:
         run_thread_with_lock("lock_doors", lock_doors, (frogpilot_toggles.lock_doors_timer, sm), report=False)
 
@@ -102,7 +104,7 @@ def frogpilot_thread():
         theme_manager.update_active_theme(time_validated, frogpilot_toggles, randomize_theme=True)
 
       if time_validated:
-        send_stats(json.loads(params.get("LastGPSPosition") or "{}"), params, frogpilot_toggles)
+        run_thread_with_lock("send_stats", send_stats, (json.loads(params.get("LastGPSPosition") or "{}"), params, frogpilot_toggles))
 
     elif started and not started_previously:
       if error_log.is_file():

@@ -18,22 +18,22 @@ private:
   void updateState(const UIState &s, const FrogPilotUIState &fs);
   void updateToggles();
 
-  bool cancellingDownload;
-  bool colorDownloading;
+  bool cancellingDownload = false;
+  bool colorDownloading = false;
   bool colorsDownloaded;
-  bool distanceIconDownloading;
+  bool distanceIconDownloading = false;
   bool distanceIconsDownloaded;
-  bool finalizingDownload;
-  bool forceOpenDescriptions;
-  bool iconDownloading;
+  bool finalizingDownload = false;
+  bool forceOpenDescriptions = false;
+  bool iconDownloading = false;
   bool iconsDownloaded;
-  bool randomThemes;
-  bool signalDownloading;
+  bool randomThemes = false;
+  bool signalDownloading = false;
   bool signalsDownloaded;
-  bool soundDownloading;
+  bool soundDownloading = false;
   bool soundsDownloaded;
-  bool themeDownloading;
-  bool wheelDownloading;
+  bool themeDownloading = false;
+  bool wheelDownloading = false;
   bool wheelsDownloaded;
 
   std::map<QString, AbstractControl*> toggles;

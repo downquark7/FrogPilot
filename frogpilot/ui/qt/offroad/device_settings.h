@@ -18,12 +18,12 @@ private:
   void updateState(const UIState &s);
   void updateToggles();
 
-  bool forceOpenDescriptions;
-  bool started;
+  bool forceOpenDescriptions = false;
+  bool started = false;
 
   std::map<QString, AbstractControl*> toggles;
 
-  QSet<QString> deviceManagementKeys = {"DeviceShutdown", "FrogPilotTelemetry", "HigherBitrate", "IncreaseThermalLimits", "LowVoltageShutdown", "NoLogging", "NoUploads", "UseKonikServer"};
+  QSet<QString> deviceManagementKeys = {"DeviceShutdown", "HigherBitrate", "IncreaseThermalLimits", "LowVoltageShutdown", "NoLogging", "NoUploads", "UseKonikServer"};
   QSet<QString> screenKeys = {"ScreenBrightness", "ScreenBrightnessOnroad", "ScreenRecorder", "ScreenTimeout", "ScreenTimeoutOnroad", "StandbyMode"};
 
   QSet<QString> parentKeys;

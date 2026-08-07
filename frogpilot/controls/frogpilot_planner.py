@@ -20,6 +20,9 @@ from openpilot.frogpilot.controls.lib.frogpilot_following import FrogPilotFollow
 from openpilot.frogpilot.controls.lib.frogpilot_vcruise import FrogPilotVCruise
 from openpilot.frogpilot.controls.lib.weather_checker import WeatherChecker
 
+CURVE_DETECTION_ENTER = 1.0
+CURVE_DETECTION_EXIT = 0.7
+
 class FrogPilotPlanner:
   def __init__(self, error_log, ThemeManager):
     self.cem = ConditionalExperimentalMode(self)
@@ -75,7 +78,8 @@ class FrogPilotPlanner:
       gps_position = {
         "latitude": sm["liveLocationKalman"].positionGeodetic.value[0],
         "longitude": sm["liveLocationKalman"].positionGeodetic.value[1],
-        "bearing": math.degrees(sm["liveLocationKalman"].calibratedOrientationNED.value[2])
+        "bearing": math.degrees(sm["liveLocationKalman"].calibratedOrientationNED.value[2]),
+        "location_mono_time": sm.logMonoTime["liveLocationKalman"],
       }
 
       params_memory.put("LastGPSPosition", json.dumps(gps_position))
@@ -103,9 +107,11 @@ class FrogPilotPlanner:
     self.model_stopped = self.model_length < CRUISING_SPEED * PLANNER_TIME
     self.model_stopped |= self.frogpilot_vcruise.forcing_stop
 
-    self.road_curvature, self.time_to_curve = calculate_road_curvature(sm["modelV2"])
+    self.road_curvature, self.time_to_curve, road_curvature_peak = calculate_road_curvature(sm["modelV2"], v_ego, self.frogpilot_vcruise.csc.budget)
 
-    self.road_curvature_detected = (1 / abs(self.road_curvature))**0.5 < v_ego > CRUISING_SPEED and not (sm["carState"].leftBlinker or sm["carState"].rightBlinker)
+    self.road_curvature_detected = v_ego**2 * road_curvature_peak > (CURVE_DETECTION_EXIT if self.road_curvature_detected else CURVE_DETECTION_ENTER)
+    self.road_curvature_detected &= v_ego > CRUISING_SPEED
+    self.road_curvature_detected &= not (sm["carState"].leftBlinker or sm["carState"].rightBlinker)
 
     if not sm["carState"].standstill:
       self.tracking_lead = self.update_lead_status()
@@ -115,7 +121,7 @@ class FrogPilotPlanner:
     if gps_position and time_validated and frogpilot_toggles.weather_presets:
       self.frogpilot_weather.update_weather(gps_position, now, frogpilot_toggles)
     else:
-      self.frogpilot_weather.weather_id = 0
+      self.frogpilot_weather.invalidate()
 
   def update_lead_status(self):
     closing_lead = self.lead_one.status
@@ -170,7 +176,9 @@ class FrogPilotPlanner:
     frogpilotPlan.roadCurvature = self.road_curvature
 
     frogpilotPlan.slcMapSpeedLimit = self.frogpilot_vcruise.slc.map_speed_limit
+    frogpilotPlan.slcMapboxIsForward = self.frogpilot_vcruise.slc.mapbox_is_forward
     frogpilotPlan.slcMapboxSpeedLimit = self.frogpilot_vcruise.slc.mapbox_limit
+    frogpilotPlan.slcMapboxWayId = self.frogpilot_vcruise.slc.mapbox_way_id
     frogpilotPlan.slcNextSpeedLimit = self.frogpilot_vcruise.slc.next_speed_limit
     frogpilotPlan.slcOverriddenSpeed = self.frogpilot_vcruise.slc.overridden_speed
     frogpilotPlan.slcSpeedLimit = self.frogpilot_vcruise.slc_target

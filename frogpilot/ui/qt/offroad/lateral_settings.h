@@ -19,8 +19,8 @@ private:
   void updateState(const UIState &s);
   void updateToggles();
 
-  bool forceOpenDescriptions;
-  bool started;
+  bool forceOpenDescriptions = false;
+  bool started = false;
 
   std::map<QString, AbstractControl*> toggles;
 

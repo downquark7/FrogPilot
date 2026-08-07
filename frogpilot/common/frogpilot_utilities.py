@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import dataclasses
 import json
 import math
 import numpy as np
@@ -10,6 +9,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 import zipfile
 
 from functools import cache
@@ -22,28 +22,30 @@ from opendbc.can.parser import CANParser
 from openpilot.common.realtime import DT_DMON, DT_HW
 from openpilot.selfdrive.car.toyota.carcontroller import LOCK_CMD
 from openpilot.system.hardware import HARDWARE
-from openpilot.system.version import get_build_metadata
 from panda import Panda
 
-from openpilot.frogpilot.common.frogpilot_variables import EARTH_RADIUS, ERROR_LOGS_PATH, FROGPILOT_API, KONIK_PATH, MAPD_PATH, MAPS_PATH, params, params_cache, params_memory
+from openpilot.frogpilot.common import frogpilot_api
+from openpilot.frogpilot.common.frogpilot_variables import EARTH_RADIUS, ERROR_LOGS_PATH, KONIK_PATH, MAPS_PATH, MINIMUM_PLANNED_SPEED, params, params_cache, params_memory
 
 running_threads = {}
 
 locks = {
   "backup_toggles": threading.Lock(),
+  "capture_report": threading.Lock(),
   "download_all_models": threading.Lock(),
   "download_model": threading.Lock(),
   "download_theme": threading.Lock(),
   "flash_panda": threading.Lock(),
   "lock_doors": threading.Lock(),
+  "send_stats": threading.Lock(),
   "update_checks": threading.Lock(),
   "update_maps": threading.Lock(),
   "update_openpilot": threading.Lock()
 }
 
 def run_thread_with_lock(name, target, args=(), report=True):
-  if not running_threads.get(name, threading.Thread()).is_alive():
-    with locks[name]:
+  with locks[name]:
+    if not running_threads.get(name, threading.Thread()).is_alive():
       def wrapped_target(*t_args):
         try:
           target(*t_args)
@@ -104,43 +106,43 @@ def calculate_lane_width(lane, current_lane, road_edge=None):
   return float(distance_to_lane)
 
 # Credit goes to Pfeiferj!
-def calculate_road_curvature(modelData):
-  orientation_rate = np.array(modelData.orientationRate.z)
+def calculate_road_curvature(modelData, v_ego, lateral_budget):
   velocity = np.array(modelData.velocity.x)
-  timebase = np.array(modelData.orientationRate.t)
 
-  lateral_acceleration = orientation_rate * velocity
-  index = np.argmax(np.abs(lateral_acceleration))
-  predicted_lateral_acc = float(lateral_acceleration[index])
-  time_to_curve = float(timebase[index])
+  curvature = np.array(modelData.orientationRate.z) / np.maximum(velocity, 1)
+  moving_curvature = np.where(velocity >= MINIMUM_PLANNED_SPEED, np.abs(curvature), 0)
 
-  return float(predicted_lateral_acc / max(velocity[index], 1)**2), max(time_to_curve, 1)
+  time_to_point = np.maximum(np.array(modelData.orientationRate.t), 1)
+  required_decelerations = (v_ego - np.sqrt(lateral_budget / np.maximum(moving_curvature, 1e-6))) / time_to_point
+
+  if lateral_budget > 0 and np.any(required_decelerations > 0):
+    index = np.argmax(required_decelerations)
+  else:
+    index = np.argmax(moving_curvature)
+
+  return float(curvature[index]), float(time_to_point[index]), float(np.max(moving_curvature))
 
 def capture_report(discord_user, report, frogpilot_toggles):
-  api_info = get_frogpilot_api_info()
-
   error_file_path = ERROR_LOGS_PATH / "error.txt"
   error_content = "No error log found."
   if error_file_path.exists():
-    error_content = error_file_path.read_text()[:1000]
+    error_content = error_file_path.read_text()[-500:]
 
   payload = {
-    "api_token": api_info.api_token,
-    "build_metadata": api_info.build_metadata,
-    "device": api_info.device_type,
     "discord_user": discord_user,
     "error_content": error_content,
-    "frogpilot_dongle_id": api_info.dongle_id,
     "frogpilot_toggles": frogpilot_toggles,
     "report": report,
+    "report_id": str(uuid.uuid4()),
+    "report_schema_version": 1,
   }
 
-  try:
-    response = requests.post(f"{FROGPILOT_API}/discord/report", json=payload, headers={"Content-Type": "application/json", "User-Agent": "frogpilot-api/1.0"}, timeout=30)
-    response.raise_for_status()
+  response = frogpilot_api.post("/v1/reports", json=payload, headers={"User-Agent": "frogpilot-api/1.0"}, timeout=30)
+  if response is not None and 200 <= response.status_code < 300:
     print("Successfully sent error report!")
-  except requests.exceptions.RequestException as exception:
-    print(f"Error sending report: {exception}")
+  else:
+    status = "no_response" if response is None else response.status_code
+    print(f"Error sending report (status={status})")
 
 def clean_model_name(name):
   return (
@@ -166,7 +168,7 @@ def extract_tar(tar_file, extract_path):
   print(f"Extracting {tar_file} to {extract_path}")
 
   with tarfile.open(tar_file, "r:gz") as tar:
-    tar.extractall(path=extract_path)
+    tar.extractall(path=extract_path, filter="data")
 
   tar_file.unlink()
   print(f"Extraction completed: {tar_file} has been removed")
@@ -191,29 +193,12 @@ def flash_panda():
     try:
       with Panda(serial=serial) as panda:
         print(f"Flashing Panda {serial}")
-        panda.flash()
+        panda.flash(force=True)
     except Exception as exception:
       print(f"Failed to flash Panda {serial}: {exception}")
       sentry.capture_exception(exception)
 
   params_memory.remove("FlashPanda")
-
-@dataclasses.dataclass(frozen=True)
-class FrogPilotApiInfo:
-  api_token: str | None
-  build_metadata: dict
-  device_type: str
-  dongle_id: str | None
-  os_version: str | None
-
-def get_frogpilot_api_info():
-  return FrogPilotApiInfo(
-    api_token=params.get("FrogPilotApiToken", encoding="utf-8"),
-    build_metadata=dataclasses.asdict(get_build_metadata()),
-    device_type=HARDWARE.get_device_type(),
-    dongle_id=params.get("FrogPilotDongleId", encoding="utf-8"),
-    os_version=HARDWARE.get_os_version(),
-  )
 
 def get_lock_status(can_parser, can_sock):
   can_msgs = messaging.drain_sock_raw(can_sock, wait_for_one=True)
@@ -327,9 +312,6 @@ def update_json_file(path, data):
     json.dump(data, file, indent=2, sort_keys=True)
 
 def update_maps(now):
-  while not MAPD_PATH.exists():
-    time.sleep(60)
-
   try:
     maps_selected = json.loads(params.get("MapsSelected", encoding="utf-8") or "{}")
   except json.JSONDecodeError:
@@ -342,6 +324,8 @@ def update_maps(now):
 
   if not (maps_selected.get("nations") or maps_selected.get("states")):
     return
+
+  now = now.astimezone()
 
   day = now.day
   is_first = day == 1

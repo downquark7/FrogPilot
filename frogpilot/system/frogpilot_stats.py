@@ -1,11 +1,10 @@
 import json
 import math
-import requests
 import sqlite3
 
 from cereal import car, custom
 
-from openpilot.frogpilot.common import frogpilot_utilities, frogpilot_variables
+from openpilot.frogpilot.common import frogpilot_api, frogpilot_utilities, frogpilot_variables
 
 
 STATS_PAYLOAD_SCHEMA_VERSION = 1
@@ -241,45 +240,26 @@ def send_stats(gps_position, params, frogpilot_toggles):
   if frogpilot_toggles.car_make == "mock":
     return
 
-  api_info = frogpilot_utilities.get_frogpilot_api_info()
-  if not api_info.api_token or not api_info.dongle_id:
-    return
-
   city, state, country = get_city(gps_position)
 
   using_default_model = (params.get("Model", encoding="utf-8") or "").endswith("_default")
 
-  payload = {
-    "api_token": api_info.api_token,
-    "build_metadata": api_info.build_metadata,
-    "device": api_info.device_type,
-    "frogpilot_dongle_id": api_info.dongle_id,
+  response = frogpilot_api.post("/v1/stats", json={
     "model_scores": get_model_scores(params),
-    "os_version": api_info.os_version,
     "stats_schema_version": STATS_PAYLOAD_SCHEMA_VERSION,
     "user_stats": {
       "calibrated_lateral_acceleration": params.get_float("CalibratedLateralAcceleration"),
       "car_params": get_car_params(params),
       "city": city,
       "country": country,
-      "device": api_info.device_type,
       "frogpilot_car_params": get_frogpilot_car_params(params),
-      "frogpilot_dongle_id": api_info.dongle_id,
       "frogpilot_stats": json.loads(params.get("FrogPilotStats") or "{}"),
       "state": state,
       "toggles": vars(frogpilot_toggles),
       "using_default_model": using_default_model,
     },
-  }
+  })
 
-  try:
-    response = requests.post(
-      f"{frogpilot_variables.FROGPILOT_API}/stats",
-      json=payload,
-      headers={"Content-Type": "application/json", "User-Agent": "frogpilot-api/1.0"},
-      timeout=30,
-    )
-    response.raise_for_status()
-    print("Successfully sent FrogPilot stats!")
-  except requests.exceptions.RequestException as error:
-    print(f"Failed to send stats: {error}")
+  if response is None or not 200 <= response.status_code < 300:
+    status = "no_response" if response is None else response.status_code
+    print(f"Error sending stats (status={status})")

@@ -85,7 +85,7 @@ class ModelManager:
           need_to_update_models = True
           continue
 
-        expected_size = model_sizes.get(model_file.name)
+        expected_size = model_sizes.get(model_file.name, 0)
         local_size = self.model_sizes.get(model_file.name)
 
         if expected_size > 0 and local_size != expected_size:
@@ -107,7 +107,7 @@ class ModelManager:
         for filename, _ in tinygrad_files:
           model_file = f"{model}_{filename}"
 
-          expected_size = model_sizes.get(model_file)
+          expected_size = model_sizes.get(model_file, 0)
           local_size = self.model_sizes.get(model_file)
 
           if expected_size > 0 and local_size != expected_size:
@@ -346,7 +346,8 @@ class ModelManager:
       return model_sizes
 
     except requests.exceptions.RequestException as e:
-      handle_request_error(f"Failed to fetch model sizes from {'GitHub' if is_github else 'GitLab'}: {e}", None, None, None)
+      print(f"Failed to fetch model sizes from {'GitHub' if is_github else 'GitLab'}: {e}")
+      handle_request_error(e, None, None, None)
       return {}
 
   def fetch_models(self, url, repo_url, boot_run=False):

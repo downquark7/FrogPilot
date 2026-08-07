@@ -20,7 +20,7 @@ public:
   MapSettingsButton *map_settings_btn;
 
   // FrogPilot variables
-  double fps;
+  double fps = 0;
 
   FrogPilotAnnotatedCameraWidget *frogpilot_nvg;
   ScreenRecorder *screen_recorder;

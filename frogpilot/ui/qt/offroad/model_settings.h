@@ -23,9 +23,9 @@ private:
 
   bool allModelsDownloaded;
   bool allModelsDownloading;
-  bool cancellingDownload;
-  bool finalizingDownload;
-  bool forceOpenDescriptions;
+  bool cancellingDownload = false;
+  bool finalizingDownload = false;
+  bool forceOpenDescriptions = false;
   bool modelDownloading;
   bool noModelsDownloaded;
   bool started;

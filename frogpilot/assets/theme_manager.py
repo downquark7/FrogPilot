@@ -16,6 +16,7 @@ from openpilot.frogpilot.common.frogpilot_variables import ACTIVE_THEME_PATH, RA
 
 CANCEL_DOWNLOAD_PARAM = "CancelThemeDownload"
 DOWNLOAD_PROGRESS_PARAM = "ThemeDownloadProgress"
+POND_ACTIVE_THEME = "pond_active-user_created"
 
 HOLIDAY_THEME_PATH = Path(__file__).parent / "holiday_themes"
 STOCKOP_THEME_PATH = Path(__file__).parent / "stock_theme"
@@ -175,18 +176,23 @@ class ThemeManager:
             if item.get("type") == "blob"
           ]
         if is_gitlab:
-          response = self.session.get(f"https://gitlab.com/api/v4/projects/{repo_encoded}/repository/tree?ref={branch}&recursive=true", timeout=10)
-          response.raise_for_status()
-          return [
-            {
-              "path": item.get("path", ""),
-              "name": item.get("name", ""),
-              "type": item.get("type"),
-              "size": 0,
-            }
-            for item in response.json()
-            if item.get("type") in ("blob", "file")
-          ]
+          items = []
+          page = "1"
+          while page:
+            response = self.session.get(f"https://gitlab.com/api/v4/projects/{repo_encoded}/repository/tree?ref={branch}&recursive=true&per_page=100&page={page}", timeout=10)
+            response.raise_for_status()
+            items.extend(
+              {
+                "path": item.get("path", ""),
+                "name": item.get("name", ""),
+                "type": item.get("type"),
+                "size": 0,
+              }
+              for item in response.json()
+              if item.get("type") in ("blob", "file")
+            )
+            page = response.headers.get("X-Next-Page", "")
+          return items
         print(f"Unsupported repository URL: {repo_url}")
         return []
 
@@ -251,8 +257,8 @@ class ThemeManager:
       return assets
 
     except requests.exceptions.RequestException as error:
-      print(f"Request failed: {error}")
-      handle_request_error(f"Failed to fetch theme sizes from {'GitHub' if is_github else 'GitLab'}: {error}", None, None, None)
+      print(f"Failed to fetch theme sizes from {'GitHub' if is_github else 'GitLab'}: {error}")
+      handle_request_error(error, None, None, None)
       return {}
 
   @staticmethod
@@ -262,8 +268,13 @@ class ThemeManager:
     if "~" in base:
       base, creator = base.split("~", 1)
 
-    parts = base.replace("_", " ").replace("-", " ").split()
-    display = " ".join(part.capitalize() for part in parts)
+    variant = ""
+    if base.endswith("-animated"):
+      base = base[: -len("-animated")]
+      variant = " (Animated)"
+
+    parts = base.replace("_", " ").split()
+    display = " ".join(part.capitalize() for part in parts) + variant
 
     if creator:
       return f"{display} - by: {creator}"
@@ -277,7 +288,7 @@ class ThemeManager:
 
     valid_themes = set()
     for theme_directory in theme_packs_path.iterdir():
-      if not theme_directory.is_dir():
+      if not theme_directory.is_dir() or theme_directory.name == POND_ACTIVE_THEME:
         continue
 
       base_name = theme_directory.name.replace("-animated", "")
@@ -362,7 +373,7 @@ class ThemeManager:
 
     candidates = []
     for theme_pack in theme_packs_path.iterdir():
-      if not theme_pack.is_dir():
+      if not theme_pack.is_dir() or theme_pack.name == POND_ACTIVE_THEME:
         continue
 
       distance_icons_dir = theme_pack / "distance_icons"
@@ -395,7 +406,7 @@ class ThemeManager:
 
     candidates = []
     for wheel_file in steering_wheels_path.iterdir():
-      if not wheel_file.is_file():
+      if not wheel_file.is_file() or wheel_file.stem == POND_ACTIVE_THEME:
         continue
 
       name = wheel_file.stem.lower()
@@ -449,8 +460,18 @@ class ThemeManager:
     else:
       return
 
-    if asset_mappings != self.previous_asset_mappings:
+    mappings_changed = asset_mappings != self.previous_asset_mappings
+    refresh_pond_wheel = False
+    if not mappings_changed and asset_mappings["wheel_image"][1] == POND_ACTIVE_THEME:
+      wheel_source = next((THEME_SAVE_PATH / "steering_wheels").glob(f"{POND_ACTIVE_THEME}.*"), None)
+      active_wheel = next((ACTIVE_THEME_PATH / "steering_wheel").glob("wheel.*"), None)
+      refresh_pond_wheel = wheel_source is not None and (active_wheel is None or active_wheel.resolve() != wheel_source.resolve())
+
+    if mappings_changed or refresh_pond_wheel:
       for asset, (asset_type, current_value) in asset_mappings.items():
+        if not mappings_changed and asset_type != "wheel_image":
+          continue
+
         print(f"Updating {asset}: {asset_type} with value {current_value}")
 
         if asset_type == "wheel_image":

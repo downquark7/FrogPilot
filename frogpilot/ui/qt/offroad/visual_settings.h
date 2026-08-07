@@ -19,8 +19,8 @@ private:
   void updateMetric(bool metric, bool bootRun);
   void updateToggles();
 
-  bool developerUIOpen;
-  bool forceOpenDescriptions;
+  bool developerUIOpen = false;
+  bool forceOpenDescriptions = false;
 
   std::map<QString, AbstractControl*> toggles;
 

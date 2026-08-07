@@ -71,6 +71,7 @@ private:
 
   // FrogPilot variables
   void showEvent(QShowEvent *event);
+  void updateHomeButton();
   void updateTheme();
 
   bool isCPU;
